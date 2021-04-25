@@ -1,0 +1,51 @@
+'## Convolutional Neural Network 
+
+import learner
+
+def convolve (kernel : kh=>kw=>Float) (im : h=>w=>Float) : h=>w=>Float = 
+    todo 
+
+-- input/output channels, img height/width, kernel height/width
+def cnn (x:Type) (y:Type) (h:Type) (w:Type) (kh:Type) (kw:Type) 
+    : Para ((x=>y=>kh=>kw=>Float) & (y=>Float))
+        (x=>h=>w=>Float) (y=>h=>w=>Float)  = 
+    \((kernels, bias), imgs).
+        for o. 
+            sum for i. 
+                for r c. (convolve kernels.i.o imgs.i).r.c + bias.o
+
+
+def split (x:len=>a) : h=>w=>a = map (\r. slice x (r * size w) w) $ iota h
+
+
+-- ih/iw = image height/width 
+-- ph/pw = pooled hieght/width 
+-- vs/hs = vertical/horizontal stride
+def imtile (img: ih=>iw=>a) 
+    ((ph, pw) : (Type & Type)) -- pooled sizes 
+    ((vs, hs) : (Type & Type)) -- stride sizes 
+    : ph=>pw=>vs=>hs=>a =
+    for i j k l. (split (split img).k.i).l.j
+
+
+def pool_mean [VSpace a] ((ph, pw) : (Type & Type)) 
+    (x : m=>n=>a ) : ( h=>w=>a ) =
+    mean for (i,j). (imtile x (ph, pw) (h, w)).i.j 
+
+def pool_max [Ord a] ((ph, pw) : (Type & Type)) 
+    (x : m=>n=>a ) : ( h=>w=>a ) =
+    maximum for (i,j). (imtile x (ph, pw) (h, w)).i.j 
+
+
+H = 28
+W = 28
+Image = Fin 1 => Fin H => Fin W => Float 
+Class = Fin 10
+
+
+-- lenet 
+
+(cnn (Fin 1) (Fin 10) H W >>> map pool_mean) 
+>|> ( colvolve >>> map pool_mean)
+
+

@@ -1,0 +1,77 @@
+'# Example of a simple network
+
+import learner
+
+
+def dense (x:Type) (y:Type) (activation : Float -> Float) 
+    : Para (y=>x=>Float) (x=>Float) (y=>Float) = 
+    (\(p, x). map activation (p **. x))
+
+
+instance [Add a, Add b] Add (a&b) 
+    add = \(a1, b1) (a2, b2). (a1+a2, b1+b2)
+    sub = \(a1, b1) (a2, b2). (a1-a2, b1-b2)
+    zero = (zero, zero)
+
+instance [VSpace a, VSpace b] VSpace (a&b) 
+    scaleVec = \alpha (a, b). (alpha .* a, alpha .* b)
+
+'## Training
+To recap, a learner 
+1. Takes value $x$, and pararmeter $p$
+2. Returns prediction $y$ 
+3. Recieves the corrrect value $y'$ 
+4. Compares $y$ and $y'$ to compute new values $x', p'$
+The $p'$ is simple to interpret, this is our updated parameter.
+The new value $x'$ is not so straight forward.
+It is a "better" value of $x$ in the same way that the updated parameter $p'$ is a "better" value of $p$.
+This is important to have so that we can compose learners, but does not (as far as I am aware) have a useful interpretation.
+Training is the ssimply a fold over the training data.
+
+def train (MkLearner (MkLens _ put) : Learner p x y) 
+  (init : Key -> p)
+  (k : Key)
+  (train_dat : n=>x)
+  (train_lab : n=>y) 
+  : p = 
+    fold (init k) (\i p. put ((p, train_dat.i), train_lab.i) |> fst)
+
+'## Toy example 
+Let's use this to do a simple linear regression. 
+
+X : Type = Fin 5
+Y : Type = Fin 1
+P : Type = (Y=>X=>Float) 
+
+-- function to learn 
+fn : (X=>Float -> Y=>Float) = \x. [dot x [1.0, 3.0, 4.0, 0.1, -8.0]]
+
+-- generating data
+k : Key = newKey 354
+[k1, k2, k3] = splitKey k
+N : Type = Fin 10000
+noise : (N=>Y=>Float) = transpose [randnVec k1]
+
+xs : N=>X=>Float = arb k2
+ys : N=>Y=>Float = noise + map fn xs
+
+training_cutoff = 8000@N
+Train : Type = (..training_cutoff)
+Test : Type = (training_cutoff<..)
+
+train_dat : Train=>X=>Float = for i:Train. xs.(%inject i)
+train_lab : Train=>Y=>Float = for i:Train. ys.(%inject i)
+
+test_dat : Test=>X=>Float = for i:Test. xs.(%inject i)
+test_lab : Test=>Y=>Float = for i:Test. ys.(%inject i)
+
+-- model and associated learner 
+model = dense X Y id
+learner : Learner P (X=>Float) (Y=>Float) = 
+    buildLearner model mse mse (gradient_descent 0.1) 
+
+
+p_0 : P = arb k3 
+p_0 
+
+train learner arb k3 train_dat train_labs
