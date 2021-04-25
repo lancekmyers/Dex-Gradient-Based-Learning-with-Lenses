@@ -1,0 +1,157 @@
+'# Categorical Foundations of Machine Learning 
+This follows the paper 
+[Categorical Foundations of Gradient-Based Learning](https://arxiv.org/abs/2103.01931) by Gavranovic, Ghani, Wilson, and Zanasi.
+They provide an [implementation in python](https://github.com/lics2021-submission-208/code).
+Since Dex is a typed functional language with an emphasis on machine learning, I thought it would be a good fit.
+
+
+
+'## Para 
+Given a monoidal category $\mathsf{C}$, the category $\mathsf{Para}(\mathsf{C})$ of parameterized morphisms has the same objects as $\mathf{C}$, but morphims are pairs 
+$(P \in \mathsf{C}_0, f \colon P \otimes A \to B)$.
+
+def Para (p : Type) (a: Type) (b:Type) : Type = (p&a) -> b  
+
+'We draw these like normal morphisms in a monoidal category, but with the parameter wire at the top of the box.
+It then becomes clear how composition works.
+
+def (***) : (a->b) -> (c->d) -> ((a&c)->(b&d)) = \f g. \(x, y). (f x, g y)
+
+def para_comp (f : Para p a b) (g : Para q b c) : Para (q&p) a c =
+    rAssoc = \((x, y), z). (x, (y, z))
+    rAssoc >>> id *** f >>> g 
+
+'The category $\mathsf{Para}(\mathsf{C})$ is actually a bicategory, so there is a bit more structure to discuss here. 
+Given $(P, f) \in \mathsf{Para}(\mathsf{C})(A, B)$ and 
+$r \colon \mathsf{C}(Q, R)$, we can *reparameterize* $f$ to get 
+a morphism $(Q, f \circ r \otimes 1)$.
+
+def para_reparam (f : Para p a b) (r : q -> p) : Para q a b = 
+    r *** id >>> f
+
+'## Lens 
+We also need ome good old fashioned lenses.
+I'm not going to use any profunctor or van laarhoven encoding tricks here, although it would be pretty easy to do coend style optics in Dex.
+
+data Lens s a = MkLens (s -> a) ((s & a) -> s) 
+
+
+def lens_comp (MkLens g1 p1 : Lens s u) (MkLens g2 p2 : Lens u a) : Lens s a =
+    get = g1 >>> g2 
+    put = (\x. (x, x)) >>> (fst *** (g1 *** id)) >>> (id *** p2) >>> p1  
+    MkLens get put
+
+def lens_tens 
+  (MkLens g1 p1 : Lens s a) 
+  (MkLens g2 p2 : Lens t b) 
+  : Lens (s&t) (a&b) =
+    get = g1 *** g2
+    put = \((s, t), (a, b)). (p1 (s, a), p2 (t, b))
+    MkLens get put
+
+def id_lens : Lens x x =
+    MkLens id snd
+    
+'## Learners 
+Now we get to the meat of the paper.
+We will work in the context of the category 
+$\mathsf{Para}(\mathsf{Lens}(\mathsf{C}))$.
+A morphism in $\mathsf{Para}(\mathsf{Lens}(\mathsf{C}))$, 
+is a pair 
+$(P, (\mathtt{get} : P \otimes S \to A, 
+    \mathtt{put} : (P \otimes S) \otimes A \to (P \otimes S)))$
+These morphisms will be our learner *learners*.
+
+data Learner p x y = MkLearner (Lens (p&x) y)
+
+'Composition of parameterized lenses is the "obvious" thing.
+We simply translate the composition for parameterized morphisms into the category of lenses. 
+
+def (|||) 
+  ((MkLearner f) : Learner p x y) 
+  ((MkLearner g) : Learner q y z) 
+  : Learner (q&p) x z = 
+    rAssoc : (Lens ((q&p)&x) (q&(p&x))) = 
+        MkLens (\((a, b), c). (a, (b, c))) (\(_, (a, (b, c))). ((a, b), c))
+    MkLearner $ 
+        rAssoc `lens_comp` (id_lens `lens_tens` f) `lens_comp` g
+
+def id_learner : (Learner p x x) = MkLearner $ MkLens snd fst
+
+def learner_reparam 
+  ((MkLearner f) : Learner p a b) 
+  (r : Lens q p) 
+  : Learner q a b = 
+    MkLearner $ (r `lens_tens` id_lens) `lens_comp` f
+
+'As the name "gradient based learning" implies, we will need to involve the gradient. 
+A function together with the transpose of its jacobian forms a lens.
+This holds more generally for any reverse derivative category, but that level of generality can be left for another day.
+Since Dex has automatic differentiation built in, it is easy to lift any Dex function to a lens and even to a learner.
+
+
+def liftToLearner (f : Para p x y) : Learner p x y = 
+    get = f 
+    put = \((p, x), y). 
+        (y', rf) = vjp f (p, x)
+        rf y'
+    MkLearner (MkLens get put)
+
+
+'## Displacement Maps 
+I would suggest looking at the paper for details here, but essentiall we will use *displacement maps* to measure error. 
+These are maps $A \otimes A \to A$ invertible in their second argument.
+
+def Displacement (a:Type) : Type = a -> Iso a a
+
+'As discussed in the paper, from a measure of losss we can derive a displacement map.
+The two that they use are mean square error and cross entropy.
+the corresponding displacement maps are as follows.
+
+def mse [Add a] : Displacement a = 
+    \a. MkIso {fwd = \a'. a - a', bwd = \diff. a - diff} 
+
+def crossEntropy : Displacement (n=>Float) = 
+    \x. MkIso { fwd = \q. softmax x - q, bwd = \diff. softmax x - diff }
+
+
+'## Update strategies
+We know how to reparameterize 
+$(P, l) \in \mathsf{\mathsf{Para}}(\mathsfs{Lens})(X, Y)$ given a lens 
+$(\mathtt{get} : Q \to P, \mathtt{put} : Q \otimes P \to P)$.
+What does this mean in the context of gradient based learning?
+Start with 
+The $\mathtt{get}$ part takes a pararmeter value, possibly modifies it, and sends the new parameter to our model function. 
+The $\mathtt{put}$
+
+
+def gradient_descent [VSpace p] (step : Float) : Lens p p =  
+    MkLens id (\(p, p'). p - step .* p') 
+
+def momentum [VSpace p] (eps : Float) (gamma : Float) : Lens (p&p) p = 
+    put = \((v, p), p'). 
+        v' = gamma .* v + eps .* p' 
+        (v', p - v') 
+    MkLens snd put 
+
+def nesterov [VSpace p] (eps : Float) (gamma : Float) : Lens (p&p) p = 
+    get = \(v, p). p - gamma .* v 
+    put = \((v, p), p'). 
+        v' = gamma .* v + eps .* p' 
+        (v', p - v') 
+    MkLens get put 
+
+
+def buildLearner 
+    (f : Para p x y) 
+    (dX : Displacement x) 
+    (dY : Displacement y)
+    (update : Lens q p)
+    : Learner q x y = 
+    get = f 
+    put = \((p, x), y).
+        (y', rf) = vjp f (p, x)  
+        y'' = appIso (dY y') y 
+        (p', x') = rf y''
+        (p', revIso (dX x) x')
+    learner_reparam (MkLearner $ MkLens get put) update
