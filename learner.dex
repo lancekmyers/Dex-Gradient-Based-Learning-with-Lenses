@@ -2,9 +2,7 @@
 This follows the paper 
 [Categorical Foundations of Gradient-Based Learning](https://arxiv.org/abs/2103.01931) by Gavranovic, Ghani, Wilson, and Zanasi.
 They provide an [implementation in python](https://github.com/lics2021-submission-208/code).
-Since Dex is a typed functional language with an emphasis on machine learning, I thought it would be a good fit.
-
-
+Since Dex is a typed functional language with automatic differentiation and an emphasis on machine learning, I thought it would be a good fit.
 
 '## Para 
 Given a monoidal category $\mathsf{C}$, the category $\mathsf{Para}(\mathsf{C})$ of parameterized morphisms has the same objects as $\mathf{C}$, but morphims are pairs 
@@ -104,7 +102,7 @@ These are maps $A \otimes A \to A$ invertible in their second argument.
 
 def Displacement (a:Type) : Type = a -> Iso a a
 
-'As discussed in the paper, from a measure of losss we can derive a displacement map.
+'As discussed in the paper, from a measure of loss we can derive a displacement map.
 The two that they use are mean square error and cross entropy.
 the corresponding displacement maps are as follows.
 
@@ -117,7 +115,7 @@ def crossEntropy : Displacement (n=>Float) =
 
 '## Update strategies
 We know how to reparameterize 
-$(P, l) \in \mathsf{\mathsf{Para}}(\mathsfs{Lens})(X, Y)$ given a lens 
+$(P, l) \in \mathsf{\mathsf{Para}}(\mathsf{Lens})(X, Y)$ given a lens 
 $(\mathtt{get} : Q \to P, \mathtt{put} : Q \otimes P \to P)$.
 What does this mean in the context of gradient based learning?
 Start with 
